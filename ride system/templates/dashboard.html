@@ -1,0 +1,1697 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Ride Sharing | Modern Concierge & Transit</title>
+    <!-- Leaflet Interactive Map CSS & JS (Fallback Engine) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <!-- Chart.js Engine for Profit & Loss Interactive Analytics -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <meta id="googleMapsApiKeyMeta" name="google-maps-api-key" content="{{ google_maps_api_key or '' }}">
+    <script>
+        window.INITIAL_GOOGLE_MAPS_API_KEY = {{ (google_maps_api_key or '')| tojson }};
+        window.IS_ADMIN = {{ 'true' if is_admin else 'false' }};
+        window.CURRENT_USER_TYPE = {{ (user_type or 'Customer')| tojson }};
+        window.CURRENT_USER_NAME = {{ (user_name or '')| tojson }};
+        window.CURRENT_USER_ID = {{ (user_id or '')| tojson }};
+    </script>
+    <link id="themeStylesheet" rel="stylesheet" href="{{ url_for('static', filename='style-modern.css') }}">
+</head>
+
+<body>
+    <!-- Ambient Floating Particles Canvas -->
+    <canvas id="particles-canvas"></canvas>
+
+    <div class="dashboard-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div>
+                <div class="brand-header">
+                    <div class="brand-title">RIDE SHARING</div>
+                    <div class="brand-sub">Real-Time Travel System</div>
+                </div>
+
+                <nav class="nav-menu">
+                    <div class="nav-item active" onclick="loadModule('rides', this)">
+                        <span>🚘</span> Ride & Booking
+                    </div>
+                    <div class="nav-item" onclick="loadModule('map', this)">
+                        <span>🗺️</span> Live Map & Tracking
+                    </div>
+                    <div class="nav-item" onclick="loadModule('drivers', this)">
+                        <span>🏎️</span> Drivers & Vehicles
+                    </div>
+                    <div class="nav-item" onclick="loadModule('long-distance', this)">
+                        <span>🍽️</span> Long Distance & Rest
+                    </div>
+                    <div class="nav-item" onclick="loadModule('food', this)">
+                        <span>🍱</span> In-Vehicle Food Order
+                    </div>
+                    <div class="nav-item" onclick="loadModule('payments', this)">
+                        <span>💳</span> Payment Records
+                    </div>
+
+                    {% if is_admin %}
+                    <!-- Exclusive Administrator Portal Section -->
+                    <div class="nav-section-divider">
+                        <span class="nav-section-label">👑 EXECUTIVE ADMIN</span>
+                    </div>
+                    <div class="nav-item nav-item-admin" onclick="loadModule('profit-loss', this)">
+                        <span>📈</span> Profit & Loss Graphs
+                    </div>
+                    <div class="nav-item nav-item-admin" onclick="loadModule('master-data', this)">
+                        <span>🗄️</span> All System Data
+                    </div>
+                    <div class="nav-item nav-item-admin" onclick="loadModule('users', this)">
+                        <span>👥</span> User Management
+                    </div>
+                    {% endif %}
+                </nav>
+            </div>
+
+            <a href="/logout" style="text-decoration: none;">
+                <div class="nav-item" style="color: #f43f5e; border-color: rgba(244,63,94,0.2);">
+                    <span>🚪</span> Sign Out
+                </div>
+            </a>
+        </aside>
+
+        <!-- Main Dashboard View -->
+        <main class="main-content">
+            <header class="top-bar">
+                <div class="page-title">
+                    <h1 id="moduleTitle">Ride & Booking Module</h1>
+                    {% if is_admin %}
+                    <div class="admin-top-badge" title="Authenticated with Master Administrative Privileges">
+                        <span class="pulse-cyan-dot"></span>
+                        <span>👑 ADMINISTRATOR • FULL ACCESS</span>
+                    </div>
+                    {% else %}
+                    <div class="customer-top-badge">
+                        <span>🚘 PASSENGER PORTAL</span>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="top-controls-group">
+                    <button class="btn-top-shortcut" onclick="loadModule('map')"
+                        title="Open Real-Time Kerala Google Map">🗺️ Live Kerala Map</button>
+                    {% if is_admin %}
+                    <button class="btn-top-shortcut" onclick="loadModule('profit-loss')"
+                        title="View Profit and Loss Graph Dashboard">📈 P&L Graphs</button>
+                    <button class="btn-top-shortcut" onclick="loadModule('master-data')"
+                        title="View All Master System Records">🗄️ Master Data</button>
+                    {% endif %}
+                    <div class="theme-switcher-wrapper">
+                        <span>🎨 Theme</span>
+                        <select id="themeSelector" class="theme-select" onchange="switchTheme(this.value)">
+                            <option value="cyber-lumina">⚡ Cyber Lumina (Ultra Modern)</option>
+                            <option value="emerald-matrix">🌿 Emerald Matrix (Tech Jade)</option>
+                            <option value="amethyst-nebula">🔮 Amethyst Nebula (Cosmic Violet)</option>
+                            <option value="royal-concierge">👑 Royal Concierge (Classic Gold)</option>
+                        </select>
+                    </div>
+                    <div class="user-badge {% if is_admin %}user-badge-admin{% endif %}">
+                        <div class="user-avatar">{% if is_admin %}👑{% else %}{{ user_name[0] if user_name else 'P' }}{%
+                            endif %}</div>
+                        <div style="display: flex; flex-direction: column;">
+                            <span style="font-size: 0.88rem; font-weight: 700;">{{ user_name }}</span>
+                            <span
+                                style="font-size: 0.7rem; color: {% if is_admin %}var(--primary-light){% else %}var(--text-muted){% endif %};">
+                                {{ 'Administrator' if is_admin else 'Passenger' }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Real-Time Interactive Map & Live Passenger Tracking View -->
+            <div id="mapViewContainer" style="display: none; margin-bottom: 25px;">
+                <!-- Telemetry KPI Metrics Banner -->
+                <div class="map-kpi-bar">
+                    <div class="kpi-card">
+                        <span class="kpi-icon">📍</span>
+                        <div>
+                            <div class="kpi-val" id="kpiStationsOnline">16 Hubs</div>
+                            <div class="kpi-lbl">Kerala Stations Online</div>
+                        </div>
+                    </div>
+                    <div class="kpi-card">
+                        <span class="kpi-icon">🚘</span>
+                        <div>
+                            <div class="kpi-val" id="kpiActiveCabs">14 Fleet Models</div>
+                            <div class="kpi-lbl">Fleet Vehicles on Radar</div>
+                        </div>
+                    </div>
+                    <div class="kpi-card">
+                        <span class="kpi-icon">⚡</span>
+                        <div>
+                            <div class="kpi-val" id="kpiLiveSpeed">0 km/h</div>
+                            <div class="kpi-lbl">Fleet Status (Stationary at Bays)</div>
+                        </div>
+                    </div>
+                    <div class="kpi-card" onclick="setMapDisplayMode('google-embed')" style="cursor: pointer;"
+                        title="Google Maps Kerala Live Platform">
+                        <span class="kpi-icon">🛰️</span>
+                        <div>
+                            <div class="kpi-val" style="color: var(--primary-light);" id="kpiGpsStatus">Google Maps</div>
+                            <div class="kpi-lbl" id="kpiApiKeyStatusLbl">Kerala Live Map Active</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Regional & Station Filter Facility Bar -->
+                <div class="region-filter-bar">
+                    <span
+                        style="font-size: 0.78rem; font-weight: 700; color: var(--primary-light); white-space: nowrap; margin-right: 4px;">Region:</span>
+                    <button type="button" class="region-filter-chip active"
+                        onclick="filterStationsByRegion('all', this)">🗺️ All Kerala (16)</button>
+                    <button type="button" class="region-filter-chip"
+                        onclick="filterStationsByRegion('central', this)">📍 Central Hubs (Kochi/Thrissur/CIAL)</button>
+                    <button type="button" class="region-filter-chip" onclick="filterStationsByRegion('south', this)">🌴
+                        South Coast (Trivandrum/Kollam/Alleppey)</button>
+                    <button type="button" class="region-filter-chip" onclick="filterStationsByRegion('north', this)">🌊
+                        North Malabar (Calicut/Kannur/Wayanad/Bekal)</button>
+                    <button type="button" class="region-filter-chip" onclick="filterStationsByRegion('hills', this)">⛰️
+                        Highlands (Munnar/Idukki)</button>
+                    <button type="button" class="region-filter-chip" onclick="filterStationsByRegion('scenic', this)">🌴
+                        Scenic Landmarks (6)</button>
+                </div>
+
+                <!-- Quick Location Jump Filter Bar -->
+                <div class="station-filter-scroll" id="stationFilterScroll">
+                    <span
+                        style="font-size: 0.8rem; font-weight: 700; color: var(--primary-light); white-space: nowrap; margin-right: 6px;">📍
+                        Jump to Location:</span>
+                    <button class="station-filter-pill active" onclick="zoomToKerala(this)">🗺️ All Kerala</button>
+                    <button class="station-filter-pill" data-region="central" onclick="zoomToStation('ST01', this)">ST01 Kochi Hub</button>
+                    <button class="station-filter-pill" data-region="south" onclick="zoomToStation('ST02', this)">ST02 Trivandrum Central</button>
+                    <button class="station-filter-pill" data-region="north" onclick="zoomToStation('ST03', this)">ST03 Kozhikode Beach</button>
+                    <button class="station-filter-pill" data-region="hills" onclick="zoomToStation('ST04', this)">ST04 Munnar Tea Hills</button>
+                    <button class="station-filter-pill" data-region="south" onclick="zoomToStation('ST05', this)">ST05 Alappuzha Jetty</button>
+                    <button class="station-filter-pill" data-region="central" onclick="zoomToStation('ST06', this)">ST06 Thrissur Round</button>
+                    <button class="station-filter-pill" data-region="central" onclick="zoomToStation('ST07', this)">ST07 Cochin Airport</button>
+                    <button class="station-filter-pill" data-region="south" onclick="zoomToStation('ST08', this)">ST08 Kovalam Beach</button>
+                    <button class="station-filter-pill" data-region="north hills" onclick="zoomToStation('ST09', this)">ST09 Wayanad Pass</button>
+                    <button class="station-filter-pill" data-region="north" onclick="zoomToStation('ST10', this)">ST10 Kannur Coast</button>
+                    <button class="station-filter-pill" data-region="south" onclick="zoomToStation('ST11', this)">ST11 Kollam Lake</button>
+                    <button class="station-filter-pill" data-region="central south" onclick="zoomToStation('ST12', this)">ST12 Kumarakom</button>
+                    <button class="station-filter-pill" data-region="central" onclick="zoomToStation('ST13', this)">ST13 Palakkad Fort</button>
+                    <button class="station-filter-pill" data-region="north" onclick="zoomToStation('ST14', this)">ST14 Malappuram</button>
+                    <button class="station-filter-pill" data-region="south" onclick="zoomToStation('ST15', this)">ST15 Pathanamthitta</button>
+                    <button class="station-filter-pill" data-region="north" onclick="zoomToStation('ST16', this)">ST16 Bekal Fort</button>
+                    <!-- Scenic Landmarks quick pills -->
+                    <button class="station-filter-pill" data-region="scenic hills" onclick="zoomToScenic('Thekkady Periyar Wildlife Sanctuary', this)">🐅 Thekkady</button>
+                    <button class="station-filter-pill" data-region="scenic south" onclick="zoomToScenic('Varkala Cliff Beach & Papanasam', this)">🏖️ Varkala Cliff</button>
+                    <button class="station-filter-pill" data-region="scenic central" onclick="zoomToScenic('Athirappilly Waterfalls Scenic Point', this)">🌊 Athirappilly</button>
+                    <button class="station-filter-pill" data-region="scenic hills" onclick="zoomToScenic('Vagamon Pine Hills & Meadows', this)">🌲 Vagamon</button>
+                    <button class="station-filter-pill" data-region="scenic south" onclick="zoomToScenic('Jatayu Earth\'s Center Nature Park', this)">🦅 Jatayu Park</button>
+                    <button class="station-filter-pill" data-region="scenic south" onclick="zoomToScenic('Marari Beach Promenade', this)">🌴 Marari Beach</button>
+                </div>
+
+                <!-- Map & Passenger HUD Grid -->
+                <div class="map-grid-layout">
+                    <!-- Interactive Map Card Wrapper with Google Maps Embed & Radar Switcher -->
+                    <div class="map-card-wrapper">
+                        <!-- Top Header Bar with Mode Switcher -->
+                        <div class="map-engine-switch-header">
+                            <div class="map-mode-toggle-group">
+                                <button type="button" class="map-mode-btn" id="btnModeTelemetryRadar"
+                                    onclick="setMapDisplayMode('telemetry-radar')">
+                                    <span>🛰️</span> Fleet Interactive Radar
+                                </button>
+                                <button type="button" class="map-mode-btn active" id="btnModeGoogleEmbed"
+                                    onclick="setMapDisplayMode('google-embed')">
+                                    <span>🗺️</span> Google Maps (Kochi Live)
+                                </button>
+                            </div>
+                            <div class="map-quick-links">
+                                <button type="button" class="map-control-btn" onclick="zoomToKerala()"
+                                    title="Reset to All Kerala view">🗺️ Reset Kerala</button>
+                                <a href="https://www.google.com/maps/place/Keralam" target="_blank"
+                                    rel="noopener noreferrer" class="map-external-link"
+                                    title="Open Kerala in Google Maps">
+                                    ↗ Open Google Maps
+                                </a>
+                            </div>
+                        </div>
+
+                        <!-- Top Floating Route Trace Information Bar -->
+                        <div id="mapActiveRouteTraceBar" class="map-active-route-trace-bar">
+                            <div class="trace-badge-pill">🛣️ KERALA ROUTE TRACE</div>
+                            <div class="trace-stations-wrapper">
+                                <span class="trace-node pickup">
+                                    <span class="node-dot green"></span>
+                                    <span class="node-type">PICKUP:</span>
+                                    <strong id="tracePickupStationName">ST01 Kochi Marine Drive Hub</strong>
+                                </span>
+                                <span class="trace-arrow-icon">➔</span>
+                                <span class="trace-node dest">
+                                    <span class="node-dot gold"></span>
+                                    <span class="node-type">DESTINATION:</span>
+                                    <strong id="traceDestStationName">Munnar Tea Hills Station</strong>
+                                </span>
+                            </div>
+                            <div class="trace-metrics-pill">
+                                <span>📏 <strong id="traceDistanceValue">128 km</strong></span>
+                                <span class="trace-metrics-divider">•</span>
+                                <span>⏱️ <strong id="traceTimeValue">2h 35m</strong></span>
+                            </div>
+                            <div class="trace-actions-group">
+                                <button type="button" class="btn-trace-action" onclick="fitActiveRouteTrace()"
+                                    title="Fit entire route trace into view">🎯 Focus Trace</button>
+                                <button type="button" class="btn-trace-action" onclick="toggleTraceMapEngine()"
+                                    title="Switch between Radar and Google Maps Route Trace">🔄 Toggle Map</button>
+                            </div>
+                        </div>
+
+                        <!-- Google Maps Live Embed Container -->
+                        <div id="googleMapEmbedContainer" class="google-map-embed-view" style="display: block;">
+                            <iframe id="keralaGoogleMapIframe"
+                                src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d251479.2361235366!2d76.1373051354481!3d9.986838225803274!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3b080d514abec6bf%3A0xbd582caa5844192!2sKochi%2C%20Keralam!5e0!3m2!1sen!2sin!4v1793432266396!5m2!1sen!2sin"
+                                width="100%" height="100%" style="border:0;" allowfullscreen="" loading="lazy"
+                                referrerpolicy="strict-origin-when-cross-origin"></iframe>
+                        </div>
+
+                        <!-- Interactive Telemetry Radar Canvas (Leaflet) -->
+                        <div id="liveTrackingMap" style="display: none; height: calc(100% - 50px);"></div>
+
+                        <!-- Floating Map Overlays for Radar Mode -->
+                        <div class="map-floating-toolbar" id="radarFloatingToolbar" style="display: none;">
+                            <span id="mapEngineBadge" class="map-no-key-badge map-engine-badge"
+                                onclick="openApiKeyModal()" style="cursor: pointer;"
+                                title="Click to view or edit Google Maps API Key">
+                                <span class="badge-dot-indicator" id="mapBadgeDot"></span>
+                                <span id="mapEngineBadgeText">🔑 API Key</span>
+                            </span>
+                            <button class="map-control-btn btn-key-config" onclick="openApiKeyModal()"
+                                title="Enter or change Google Maps API Key">🔑 API Key</button>
+                            <button class="map-control-btn" id="btnToggleTraffic"
+                                onclick="toggleGoogleTraffic()" title="Toggle Real-Time Google Traffic Layer">🚦 Traffic</button>
+                            <button class="map-control-btn" id="btnMapStyleSwitch" onclick="cycleMapStyle()"
+                                title="Change Map Type (Dark / Satellite / Road / Terrain)">🌙 Map Style</button>
+                            <button class="map-control-btn" onclick="zoomToKerala()"
+                                title="Fit Full Kerala Fleet">🗺️ Fit Kerala</button>
+                            <button class="map-control-btn" onclick="centerOnActiveRide()"
+                                title="Focus Active Pickup Bay">🎯 Center Bay</button>
+                            <button class="map-control-btn" onclick="toggleStationPins()"
+                                title="Toggle Station Markers">📍 Stations (16)</button>
+                            <button class="map-control-btn" onclick="toggleScenicPins()"
+                                title="Toggle Scenic Landmarks">🌴 Scenic (6)</button>
+                        </div>
+
+                        <!-- Live Status Pill -->
+                        <div class="map-live-status-pill">
+                            <span class="pulse-cyan-dot"></span>
+                            <span id="mapStatusText">KOCHI LIVE MAP • GOOGLE MAPS PLATFORM</span>
+                        </div>
+                    </div>
+
+                    <!-- Passenger & Station Live Telemetry HUD Card -->
+                    <div class="map-hud-sidebar">
+                        <div class="hud-header">
+                            <div style="display: flex; gap: 6px;">
+                                <button type="button" class="hud-tab-btn active" id="btnHudTabRide"
+                                    onclick="switchHudTab('ride')">🚘 Active Ride</button>
+                                <button type="button" class="hud-tab-btn" id="btnHudTabStation"
+                                    onclick="switchHudTab('station')">📍 Station Bay Hub</button>
+                            </div>
+                            <span class="hud-badge-live" id="hudBadgeLiveStatus">LIVE RADAR</span>
+                        </div>
+
+                        <!-- View 1: Active Ride Telemetry -->
+                        <div id="hudRideViewContainer">
+                            <!-- Active Ride Selector -->
+                            <div style="margin-bottom: 14px;">
+                                <label
+                                    style="font-size: 0.74rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 5px; font-weight: 600;">Active
+                                    Ride Focus</label>
+                                <select id="mapRideSelector" class="search-input" style="width: 100%;"
+                                    onchange="onMapRideSelect(this.value)"></select>
+                            </div>
+
+                            <!-- Journey Summary Box -->
+                            <div class="hud-journey-card" id="hudJourneyCard">
+                                <div class="hud-row">
+                                    <span class="hud-label">Ride Code</span>
+                                    <strong class="hud-val" id="hudRideCode"
+                                        style="color: var(--primary-light);">RD01</strong>
+                                </div>
+                                <div class="hud-row">
+                                    <span class="hud-label">Passenger</span>
+                                    <strong class="hud-val" id="hudPassenger">Druvidh K P</strong>
+                                </div>
+                                <div class="hud-row">
+                                    <span class="hud-label">Chauffeur</span>
+                                    <strong class="hud-val" id="hudChauffeur">Pranav Mohan (⭐ 4.9)</strong>
+                                </div>
+                                <div class="hud-row">
+                                    <span class="hud-label">Vehicle</span>
+                                    <strong class="hud-val" id="hudVehicle">Mercedes-Benz • KL-07-BZ-5500</strong>
+                                </div>
+                                <div class="hud-row"
+                                    style="margin-top: 10px; border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 10px;">
+                                    <span class="hud-label">Route</span>
+                                    <span class="hud-route-badge" id="hudRouteText">Kochi ➔ Munnar</span>
+                                </div>
+
+                                <!-- Journey Status Bar -->
+                                <div style="margin-top: 14px;">
+                                    <div
+                                        style="display: flex; justify-content: space-between; font-size: 0.76rem; color: var(--text-muted); margin-bottom: 5px;">
+                                        <span>Ride Status</span>
+                                        <span id="hudProgressPercent"
+                                            style="color: #38bdf8; font-weight: 700;">At Pickup Bay • Ride Not Started</span>
+                                    </div>
+                                    <div class="hud-progress-track">
+                                        <div class="hud-progress-fill" id="hudProgressFill"
+                                            style="width: 0%; background: linear-gradient(90deg, #38bdf8, #00f2fe);">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Real-Time Travelling Info Gauges -->
+                                <div class="telemetry-gauges-grid">
+                                    <div class="gauge-pill">
+                                        <div class="gauge-lbl">Vehicle State</div>
+                                        <div class="gauge-val" id="hudSpeed"
+                                            style="font-size: 0.88rem; color: #38bdf8;">Stationary</div>
+                                    </div>
+                                    <div class="gauge-pill">
+                                        <div class="gauge-lbl">Required Time</div>
+                                        <div class="gauge-val" id="hudEta">2h 35m</div>
+                                    </div>
+                                    <div class="gauge-pill">
+                                        <div class="gauge-lbl">Route Distance</div>
+                                        <div class="gauge-val" id="hudRemaining">128 <small>km</small></div>
+                                    </div>
+                                </div>
+
+                                <!-- Live GPS Coordinates Stamp -->
+                                <div class="hud-gps-box">
+                                    <span style="color: var(--text-muted); font-size: 0.72rem;">📍 Pickup Station Coordinates:</span>
+                                    <span id="hudGpsCoord"
+                                        style="font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: var(--primary-light);">9.9816° N, 76.2753° E</span>
+                                </div>
+
+                                <!-- Quick Action Buttons for the Active Ride -->
+                                <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 16px;">
+                                    <button class="btn-gold"
+                                        style="width: 100%; padding: 11px; font-size: 0.84rem;"
+                                        onclick="centerOnActiveRide()">🎯 Center Camera on Cab</button>
+                                    <div style="display: flex; gap: 8px;">
+                                        <button class="btn-gold"
+                                            style="flex: 1; padding: 9px 4px; font-size: 0.75rem; background: rgba(56,189,248,0.18); border: 1px solid var(--border-gold); color: #fff;"
+                                            onclick="orderFoodForCurrentTrackedRide()">🍱 Order Food</button>
+                                        <button class="btn-gold"
+                                            style="flex: 1; padding: 9px 4px; font-size: 0.75rem; background: rgba(16,185,129,0.18); border: 1px solid rgba(16,185,129,0.4); color: #34d399;"
+                                            onclick="payForCurrentTrackedRide()">💳 Pay Fare</button>
+                                    </div>
+                                    {% if is_admin %}
+                                    <button class="btn-gold"
+                                        style="width: 100%; padding: 9px; font-size: 0.78rem; background: rgba(212,175,55,0.2); border: 1px solid var(--border-gold); color: #ffd700;"
+                                        onclick="editCurrentTrackedRide()">✏️ Admin: Edit This Ride</button>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- View 2: Station Bay Hub Inspector -->
+                        <div id="hudStationViewContainer" style="display: none;">
+                            <div class="station-hub-card">
+                                <div
+                                    style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+                                    <div>
+                                        <div style="font-size: 1.1rem; font-weight: 800; color: var(--primary-light); font-family: 'Outfit', sans-serif;"
+                                            id="hudStationName">Kochi Marine Drive Hub</div>
+                                        <div
+                                            style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">
+                                            Bay: <strong style="color: #fff;" id="hudStationBay">BAY-01</strong>
+                                            • <span id="hudStationDistrict">Ernakulam</span>
+                                        </div>
+                                    </div>
+                                    <span class="badge badge-success" id="hudStationFoodBadge"
+                                        style="font-size: 0.7rem;">🍱 Hot Food</span>
+                                </div>
+
+                                <div style="background: rgba(255,255,255,0.05); padding: 10px 12px; border-radius: 10px; font-size: 0.8rem; color: #f0f4f8; margin-bottom: 12px; line-height: 1.45;"
+                                    id="hudStationAmenities">
+                                    Marine Promenade, Fine Dining, Fast EV Charging & Metro Connect
+                                </div>
+
+                                <div class="hud-row">
+                                    <span class="hud-label">Food Corridor</span>
+                                    <strong class="hud-val" id="hudStationFoodZone"
+                                        style="color: #ffd700;">Kochi Marine Drive & CIAL</strong>
+                                </div>
+                                <div class="hud-row">
+                                    <span class="hud-label">GPS Coordinates</span>
+                                    <strong class="hud-val" id="hudStationGps"
+                                        style="font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: var(--primary-light);">9.9816° N, 76.2753° E</strong>
+                                </div>
+                                <div class="hud-row">
+                                    <span class="hud-label">Hub Status</span>
+                                    <span class="badge badge-info" id="hudStationCabsCount">● Active Fleet Station</span>
+                                </div>
+
+                                <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 16px;">
+                                    <button class="map-popup-btn map-popup-btn-pickup" id="btnHudBookPickup"
+                                        onclick="quickBookFromCurrentHudStation()">
+                                        🚖 Select as Pickup & Book Ride
+                                    </button>
+                                    <button class="map-popup-btn map-popup-btn-dest" id="btnHudBookDest"
+                                        onclick="quickBookToCurrentHudStation()">
+                                        🏁 Select as Destination Drop-off
+                                    </button>
+                                    <button class="map-popup-btn map-popup-btn-info"
+                                        onclick="zoomToCurrentHudStation()">
+                                        🎯 Zoom Camera to this Location
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Search & Quick Filter Facility Bar -->
+            <div class="action-bar">
+                <div class="search-facility-container" id="searchFacilityContainer">
+                    <div class="search-box-wrapper">
+                        <span class="search-box-icon">🔍</span>
+                        <input type="text" id="searchInput" class="search-input search-facility-input"
+                            placeholder="Search rides, passengers, drivers, routes..." onkeyup="filterTable()"
+                            oninput="toggleClearSearchBtn()">
+                        <button id="clearSearchBtn" class="search-clear-btn" onclick="clearSearchFilter()"
+                            title="Clear Search" style="display: none;">✕</button>
+                    </div>
+                    <div class="filter-facility-group">
+                        <select id="tableCategoryFilter" class="filter-facility-select" onchange="filterTable()"
+                            title="Filter by Status">
+                            <option value="ALL">All Statuses & Types</option>
+                            <option value="BOOKED">Booked / Ready</option>
+                            <option value="PAID">Paid / Payment Confirmed</option>
+                            <option value="COMPLETED">Completed</option>
+                            <option value="EV">Electric / EV Only</option>
+                            <option value="LUXURY">Royal Luxury Only</option>
+                        </select>
+                        <span id="searchResultCount" class="result-count-badge">All records</span>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <button id="toggleSearchBtn" class="btn-toggle-search" onclick="toggleSearchFacility()"
+                        title="Toggle Search Bar">
+                        <span id="toggleSearchIcon">🔍</span> <span id="toggleSearchText">Hide Filter</span>
+                    </button>
+                    <button id="actionBtn" class="btn-gold" onclick="handleActionBtnClick()">+ Request Booking</button>
+                </div>
+            </div>
+
+            <!-- Dynamic Table Card -->
+            <div class="table-card">
+                <table id="dataTable">
+                    <thead>
+                        <tr id="tableHead"></tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+
+            <!-- ================================================================= -->
+            <!-- ADMINISTRATOR: PROFIT & LOSS ANALYTICS & INTERACTIVE GRAPHS VIEW -->
+            <!-- ================================================================= -->
+            <div id="pnlViewContainer" style="display: none; margin-bottom: 30px;">
+                <!-- Executive Header with Timeframe Toggles and Export -->
+                <div class="pnl-header-bar">
+                    <div>
+                        <div class="pnl-section-badge">👑 EXECUTIVE FINANCIAL TELEMETRY</div>
+                        <h2 class="pnl-title">Profit & Loss Analytics & Performance Ledger</h2>
+                        <p class="pnl-sub">Real-time revenue attribution, operating expense breakdown, vehicle profitability, and multi-month corporate statement.</p>
+                    </div>
+                    <div class="pnl-controls-group">
+                        <div class="pnl-filter-pill-group">
+                            <button class="pnl-filter-pill active" onclick="setPnlTimeframe('all', this)">All Time (6 Months)</button>
+                            <button class="pnl-filter-pill" onclick="setPnlTimeframe('30d', this)">Last 30 Days</button>
+                            <button class="pnl-filter-pill" onclick="setPnlTimeframe('q3', this)">Q3 Quarterly</button>
+                        </div>
+                        <button class="btn-gold" style="padding: 9px 14px; font-size: 0.82rem;"
+                            onclick="exportPnlReport()">
+                            📥 Export P&L (CSV)
+                        </button>
+                        <button class="btn-gold"
+                            style="padding: 9px 14px; font-size: 0.82rem; background: rgba(56,189,248,0.18); border: 1px solid var(--border-gold);"
+                            onclick="window.print()">
+                            🖨️ Print Statement
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Executive Financial KPI Bar -->
+                <div class="pnl-kpi-grid">
+                    <div class="pnl-kpi-card">
+                        <div class="pnl-kpi-header">
+                            <span class="pnl-kpi-lbl">Gross Platform Revenue</span>
+                            <span class="pnl-kpi-icon">💰</span>
+                        </div>
+                        <div class="pnl-kpi-val" id="pnlGrossRevenue">₹0.00</div>
+                        <div class="pnl-kpi-trend positive">
+                            <span>▲ +18.4%</span> vs prior cycle
+                        </div>
+                    </div>
+                    <div class="pnl-kpi-card">
+                        <div class="pnl-kpi-header">
+                            <span class="pnl-kpi-lbl">Total Operating Expenses</span>
+                            <span class="pnl-kpi-icon">📉</span>
+                        </div>
+                        <div class="pnl-kpi-val" id="pnlTotalExpenses" style="color: #f43f5e;">₹0.00</div>
+                        <div class="pnl-kpi-trend neutral">
+                            <span>Chauffeur (65%) + Energy + Maint</span>
+                        </div>
+                    </div>
+                    <div class="pnl-kpi-card pnl-kpi-highlight">
+                        <div class="pnl-kpi-header">
+                            <span class="pnl-kpi-lbl">Net Operating Profit</span>
+                            <span class="pnl-kpi-icon">📈</span>
+                        </div>
+                        <div class="pnl-kpi-val pnl-net-profit-val" id="pnlNetProfit">₹0.00</div>
+                        <div class="pnl-kpi-trend positive" id="pnlMarginPill">
+                            <span id="pnlMarginPct">▲ 0.0% Net Margin</span>
+                        </div>
+                    </div>
+                    <div class="pnl-kpi-card">
+                        <div class="pnl-kpi-header">
+                            <span class="pnl-kpi-lbl">Total Completed Trips</span>
+                            <span class="pnl-kpi-icon">🚘</span>
+                        </div>
+                        <div class="pnl-kpi-val" id="pnlTotalTrips">0</div>
+                        <div class="pnl-kpi-trend positive">
+                            <span>100% Verified Fleet Fares</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Interactive Chart.js Dual Analytics Canvas Row -->
+                <div class="pnl-charts-grid">
+                    <!-- Chart 1: Revenue vs Net Profit Trend Bar/Line -->
+                    <div class="pnl-chart-card">
+                        <div class="pnl-chart-header">
+                            <div>
+                                <h3 class="pnl-chart-title">Monthly Revenue vs Net Operating Profit Trend</h3>
+                                <p class="pnl-chart-sub">Gross passenger bookings vs net retained earnings after chauffeur payouts & vehicle energy.</p>
+                            </div>
+                            <span class="pnl-chart-badge">MONTHLY AUDIT</span>
+                        </div>
+                        <div class="pnl-chart-wrapper">
+                            <canvas id="pnlRevenueTrendChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Chart 2: Operating Expense Allocation Doughnut -->
+                    <div class="pnl-chart-card">
+                        <div class="pnl-chart-header">
+                            <div>
+                                <h3 class="pnl-chart-title">Operating Cost Distribution Breakdown</h3>
+                                <p class="pnl-chart-sub">Percentage allocation across chauffeur payouts, power/fuel, maintenance, and platform margin.</p>
+                            </div>
+                            <span class="pnl-chart-badge">EXPENSE ALLOCATION</span>
+                        </div>
+                        <div class="pnl-chart-wrapper">
+                            <canvas id="pnlExpensePieChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Corporate P&L Financial Income Statement Table -->
+                <div class="pnl-card" style="margin-top: 22px;">
+                    <div class="pnl-card-header">
+                        <div>
+                            <h3 class="pnl-card-title">Corporate Income Statement (Profit & Loss Schedule)</h3>
+                            <p class="pnl-card-sub">Official ledger detailing platform gross revenues, cost of operations, platform overheads, and net operating profit.</p>
+                        </div>
+                        <span class="badge-audit-ok">AUDITED & BALANCED ✓</span>
+                    </div>
+                    <div class="pnl-statement-wrapper">
+                        <table class="pnl-statement-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 60%;">Financial Line Item & Operational Account</th>
+                                    <th style="text-align: right; width: 20%;">Allocation %</th>
+                                    <th style="text-align: right; width: 20%;">Amount (INR)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pnlStatementBody">
+                                <!-- Dynamically populated -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Vehicle Model Profitability Leaderboard Table -->
+                <div class="pnl-card" style="margin-top: 22px;">
+                    <div class="pnl-card-header">
+                        <div>
+                            <h3 class="pnl-card-title">Vehicle Model Profitability Leaderboard</h3>
+                            <p class="pnl-card-sub">Individual financial breakdown by vehicle model, gross fares, operating expenditure, and net margin performance.</p>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="pnl-statement-table pnl-vehicle-table">
+                            <thead>
+                                <tr>
+                                    <th>Fleet Model</th>
+                                    <th style="text-align: center;">Trips Completed</th>
+                                    <th style="text-align: right;">Gross Revenue</th>
+                                    <th style="text-align: right;">Operating Cost</th>
+                                    <th style="text-align: right;">Net Profit</th>
+                                    <th style="text-align: center;">Net Margin</th>
+                                    <th style="text-align: center;">Efficiency Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pnlVehicleTableBody">
+                                <!-- Dynamically populated -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ================================================================= -->
+            <!-- ADMINISTRATOR: MASTER SYSTEM DATA (SHOWS EVERYTHING) VIEW -->
+            <!-- ================================================================= -->
+            <div id="masterDataContainer" style="display: none; margin-bottom: 30px;">
+                <div class="master-header-card">
+                    <div class="master-header-left">
+                        <span class="master-badge">👑 ENTERPRISE MASTER DIRECTORY</span>
+                        <h2 class="master-title">Unified System Master Telemetry & All Data</h2>
+                        <p class="master-sub">Direct administrative inspection of all rides, transactions, food pre-orders, fleet drivers, transit hubs, and registered passengers.</p>
+                    </div>
+                    <div class="master-header-actions">
+                        <button class="btn-gold" onclick="exportMasterData('csv')">📥 Export Master CSV</button>
+                        <button class="btn-gold"
+                            style="background: rgba(56,189,248,0.18); border: 1px solid var(--border-gold);"
+                            onclick="exportMasterData('json')">📄 Export JSON</button>
+                    </div>
+                </div>
+
+                <!-- Master Metric Summary Bar -->
+                <div class="master-summary-bar">
+                    <div class="master-stat-chip active" id="mstChipAll" onclick="switchMasterTab('all', this)">
+                        <span class="chip-num" id="mstAllCount">0</span>
+                        <span class="chip-label">🌟 All Telemetry</span>
+                    </div>
+                    <div class="master-stat-chip" id="mstChipRides" onclick="switchMasterTab('rides', this)">
+                        <span class="chip-num" id="mstRidesCount">0</span>
+                        <span class="chip-label">🚘 All Rides</span>
+                    </div>
+                    <div class="master-stat-chip" id="mstChipPayments" onclick="switchMasterTab('payments', this)">
+                        <span class="chip-num" id="mstPaymentsCount">0</span>
+                        <span class="chip-label">💳 All Payments</span>
+                    </div>
+                    <div class="master-stat-chip" id="mstChipFood" onclick="switchMasterTab('food', this)">
+                        <span class="chip-num" id="mstFoodCount">0</span>
+                        <span class="chip-label">🍱 Food Orders</span>
+                    </div>
+                    <div class="master-stat-chip" id="mstChipDrivers" onclick="switchMasterTab('drivers', this)">
+                        <span class="chip-num" id="mstDriversCount">0</span>
+                        <span class="chip-label">🏎️ Drivers & Fleet</span>
+                    </div>
+                    <div class="master-stat-chip" id="mstChipStations" onclick="switchMasterTab('stations', this)">
+                        <span class="chip-num" id="mstStationsCount">0</span>
+                        <span class="chip-label">📍 Kerala Hubs</span>
+                    </div>
+                    <div class="master-stat-chip" id="mstChipUsers" onclick="switchMasterTab('users', this)">
+                        <span class="chip-num" id="mstUsersCount">0</span>
+                        <span class="chip-label">👥 System Users</span>
+                    </div>
+                </div>
+
+                <!-- Master Search & Filter Controls -->
+                <div class="master-search-card">
+                    <div class="search-box-wrapper" style="flex: 1;">
+                        <span class="search-box-icon">🔍</span>
+                        <input type="text" id="masterSearchInput" class="search-input"
+                            placeholder="Search across any ride code, passenger, plate, amount, station..."
+                            oninput="filterMasterData()">
+                        <button class="search-clear-btn" id="masterClearBtn" onclick="clearMasterSearch()"
+                            style="display: none;">✕</button>
+                    </div>
+                    <span id="masterResultsBadge" class="result-count-badge">Showing all master records</span>
+                </div>
+
+                <!-- Master Dynamic Table Card -->
+                <div class="table-card master-table-card">
+                    <div id="masterActiveTabTitle"
+                        style="font-size: 0.95rem; font-weight: 700; color: var(--primary-light); margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
+                        <span id="masterTabTitleText">All System Records</span>
+                        <span id="masterRecordCountBadge"
+                            style="font-size: 0.76rem; background: rgba(56,189,248,0.15); padding: 4px 10px; border-radius: 20px; color: #fff;">Synchronized with Database</span>
+                    </div>
+                    <div class="table-responsive">
+                        <table id="masterDataTable" style="width: 100%;">
+                            <thead>
+                                <tr id="masterTableHead"></tr>
+                            </thead>
+                            <tbody id="masterTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ================================================================= -->
+            <!-- ADMINISTRATOR: USER MANAGEMENT & ACCESS CONTROL VIEW -->
+            <!-- ================================================================= -->
+            <div id="usersContainer" style="display: none; margin-bottom: 30px;">
+                <div class="master-header-card">
+                    <div>
+                        <span class="master-badge">👥 ACCESS CONTROL & IDENTITY</span>
+                        <h2 class="master-title">Registered System Users & Role Administration</h2>
+                        <p class="master-sub">Manage platform administrators, passenger commuters, authentication credentials, and user trip expenditures.</p>
+                    </div>
+                    <button class="btn-gold" onclick="openNewUserModal()">+ Add New User</button>
+                </div>
+
+                <div class="table-card" style="margin-top: 20px;">
+                    <div class="table-responsive">
+                        <table style="width: 100%;">
+                            <thead>
+                                <tr>
+                                    <th>User ID</th>
+                                    <th>Full Name</th>
+                                    <th>System Role</th>
+                                    <th>Contact Phone</th>
+                                    <th>Gender</th>
+                                    <th style="text-align: center;">Total Rides</th>
+                                    <th style="text-align: right;">Total Spent</th>
+                                    <th style="text-align: center;">Access Level</th>
+                                    <th style="text-align: center;">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="usersTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Booking Modal -->
+    <div id="bookingModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color: var(--gold-primary); font-family: 'Cinzel', serif; margin-bottom: 15px;">New Booking Request</h2>
+            <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 20px;">Dispatch an instant ride request to active network drivers.</p>
+
+            <label style="color: var(--gold-light); font-size: 0.85rem; display: block; margin-bottom: 6px;">📅 Scheduled Ride Date</label>
+            <input type="date" id="bookingDate" class="search-input" style="width: 100%; margin-bottom: 15px;" required>
+
+            <label style="color: var(--gold-light); font-size: 0.85rem; display: block; margin-bottom: 6px;">Pickup Station</label>
+            <select id="bookingStation" class="search-input" style="width: 100%; margin-bottom: 15px;"
+                onchange="updateDestinationOptions()">
+                <option value="ST01">ST01 - Kochi Marine Drive Hub (Ernakulam)</option>
+                <option value="ST02">ST02 - Thiruvananthapuram Central (Trivandrum)</option>
+                <option value="ST03">ST03 - Kozhikode Beach Square (Calicut)</option>
+                <option value="ST04">ST04 - Munnar Tea Hills Station (Idukki)</option>
+                <option value="ST05">ST05 - Alappuzha Backwater Jetty (Alleppey)</option>
+                <option value="ST06">ST06 - Thrissur Swaraj Round (Cultural Capital)</option>
+                <option value="ST07">ST07 - Cochin International Airport (CIAL)</option>
+                <option value="ST08">ST08 - Kovalam Beach Promenade (Trivandrum)</option>
+                <option value="ST09">ST09 - Wayanad Vythiri Hill Pass (Wayanad)</option>
+                <option value="ST10">ST10 - Kannur Payyambalam Coast (Kannur)</option>
+                <option value="ST11">ST11 - Kollam Ashtamudi Lake Hub (Kollam)</option>
+                <option value="ST12">ST12 - Kottayam Kumarakom Gateway (Kottayam)</option>
+                <option value="ST13">ST13 - Palakkad Fort Junction (Palakkad)</option>
+                <option value="ST14">ST14 - Malappuram Kottakkal Gateway (Malappuram)</option>
+                <option value="ST15">ST15 - Pathanamthitta Sabarimala Junction</option>
+                <option value="ST16">ST16 - Kasaragod Bekal Fort Station (Kasaragod)</option>
+            </select>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <label style="color: var(--gold-light); font-size: 0.85rem; margin: 0;">Destination Station / Place</label>
+                <span id="validDestBadge" style="font-size: 0.72rem; color: var(--success); font-weight: 700;">● Showing Valid Destinations Only</span>
+            </div>
+            <select id="bookingDestination" class="search-input" style="width: 100%; margin-bottom: 15px;"
+                onchange="updateFoodOptionsForDestination()">
+                <optgroup label="Transit Stations (ST01 Excluded)" id="destTransitGroup">
+                    <option value="Thiruvananthapuram Central (Trivandrum)">ST02 - Thiruvananthapuram Central (Trivandrum)</option>
+                    <option value="Kozhikode Beach Square (Calicut)">ST03 - Kozhikode Beach Square (Calicut)</option>
+                    <option value="Munnar Tea Hills Station (Idukki)" selected>ST04 - Munnar Tea Hills Station (Idukki)</option>
+                    <option value="Alappuzha Backwater Jetty (Alleppey)">ST05 - Alappuzha Backwater Jetty (Alleppey)</option>
+                    <option value="Thrissur Swaraj Round (Cultural Capital)">ST06 - Thrissur Swaraj Round (Cultural Capital)</option>
+                    <option value="Cochin International Airport (CIAL)">ST07 - Cochin International Airport (CIAL)</option>
+                    <option value="Kovalam Beach Promenade (Trivandrum)">ST08 - Kovalam Beach Promenade (Trivandrum)</option>
+                    <option value="Wayanad Vythiri Hill Pass (Wayanad)">ST09 - Wayanad Vythiri Hill Pass (Wayanad)</option>
+                    <option value="Kannur Payyambalam Coast (Kannur)">ST10 - Kannur Payyambalam Coast (Kannur)</option>
+                    <option value="Kollam Ashtamudi Lake Hub (Kollam)">ST11 - Kollam Ashtamudi Lake Hub (Kollam)</option>
+                    <option value="Kottayam Kumarakom Gateway (Kottayam)">ST12 - Kottayam Kumarakom Gateway (Kottayam)</option>
+                    <option value="Palakkad Fort Junction (Palakkad)">ST13 - Palakkad Fort Junction (Palakkad)</option>
+                    <option value="Malappuram Kottakkal Gateway (Malappuram)">ST14 - Malappuram Kottakkal Gateway (Malappuram)</option>
+                    <option value="Pathanamthitta Sabarimala Junction">ST15 - Pathanamthitta Sabarimala Junction</option>
+                    <option value="Kasaragod Bekal Fort Station (Kasaragod)">ST16 - Kasaragod Bekal Fort Station (Kasaragod)</option>
+                </optgroup>
+                <optgroup label="Popular Scenic Destinations (Non-Station Drops)">
+                    <option value="Thekkady Periyar Wildlife Sanctuary (Idukki)">Thekkady Periyar Wildlife Sanctuary (Idukki)</option>
+                    <option value="Varkala Cliff Beach & Papanasam (Trivandrum)">Varkala Cliff Beach & Papanasam (Trivandrum)</option>
+                    <option value="Athirappilly Waterfalls Scenic Point (Thrissur)">Athirappilly Waterfalls Scenic Point (Thrissur)</option>
+                    <option value="Vagamon Pine Hills & Meadows (Idukki)">Vagamon Pine Hills & Meadows (Idukki)</option>
+                    <option value="Jatayu Earth's Center Nature Park (Kollam)">Jatayu Earth's Center Nature Park (Kollam)</option>
+                    <option value="Marari Beach Promenade (Alappuzha)">Marari Beach Promenade (Alappuzha)</option>
+                </optgroup>
+            </select>
+
+            <label style="color: var(--gold-light); font-size: 0.85rem; display: block; margin-bottom: 6px;">Vehicle Fleet</label>
+            <select id="bookingVehicle" class="search-input" style="width: 100%; margin-bottom: 15px;">
+                <optgroup label="⚡ Next-Gen Electric (Hyper-Modern EV)">
+                    <option value="Tesla" selected>Tesla Model S Plaid (EV Hyper-Tech) - ₹1,550</option>
+                    <option value="Porsche">Porsche Taycan EV (Grand Touring Sports) - ₹1,850</option>
+                    <option value="Audi">Audi e-tron GT (Quattro Prestige EV) - ₹1,300</option>
+                    <option value="Ather">Ather 450X Smart EV (Eco Swift City Solo) - ₹60</option>
+                </optgroup>
+                <optgroup label="👑 Royal & Executive Luxury">
+                    <option value="Rolls-Royce">Rolls-Royce Ghost (Royal Crown Limousine) - ₹2,500</option>
+                    <option value="Benz">Mercedes-Benz S-Class (VIP Luxury) - ₹1,400</option>
+                    <option value="BMW">BMW 7-Series (Executive Prestige) - ₹1,100</option>
+                </optgroup>
+                <optgroup label="🚙 Highland SUV & Touring Fleet">
+                    <option value="Range Rover">Range Rover Autobiography (4x4 Hill Explorer) - ₹1,250</option>
+                    <option value="Innova">Toyota Innova Crysta (Touring & Family) - ₹650</option>
+                    <option value="Volvo">Volvo 9600 Luxury Coach (Royal Group Lounge) - ₹850</option>
+                </optgroup>
+                <optgroup label="🌴 Express City & Solo Travel">
+                    <option value="Alto">Maruti Suzuki Alto (Smart Hatchback) - ₹220</option>
+                    <option value="Autorickshaw">Kerala Autorickshaw (Fast Tuk-Tuk Auto) - ₹120</option>
+                    <option value="Bike">Royal Enfield Bullet 350 (Solo Cruiser) - ₹80</option>
+                    <option value="Harley">Harley-Davidson Fat Boy (Coastal Cruiser) - ₹180</option>
+                </optgroup>
+            </select>
+
+            <label style="color: var(--gold-light); font-size: 0.85rem; display: block; margin-bottom: 6px;">Travel Type</label>
+            <select id="bookingRideType" class="search-input" style="width: 100%; margin-bottom: 15px;">
+                <option value="Local">Local City Travel</option>
+                <option value="Long-Distance">Long-Distance Express</option>
+            </select>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <label style="color: var(--gold-light); font-size: 0.85rem; margin: 0;">In-Vehicle Food Pre-Order (Optional)</label>
+                <span id="foodAvailabilityBadge" style="font-size: 0.72rem; color: #38bdf8; font-weight: 700;">● Filtered by Destination Restaurants</span>
+            </div>
+            <div id="adjacentRestaurantNote"
+                style="font-size: 0.78rem; color: #93c5fd; background: rgba(56,189,248,0.1); border: 1px solid rgba(56,189,248,0.25); border-radius: 8px; padding: 7px 10px; margin-bottom: 8px; line-height: 1.4;">
+                🏪 <strong>Adjacent Restaurants:</strong> <span id="adjacentRestaurantNames">Highland Tea Garden Diner (Munnar Top Station)</span>
+            </div>
+            <select id="bookingFood" class="search-input" style="width: 100%; margin-bottom: 14px;">
+                <option value="None">No Food (Ride Only)</option>
+            </select>
+
+            <button type="button" class="btn-gold"
+                style="width: 100%; margin-bottom: 15px; padding: 9px; font-size: 0.82rem; background: rgba(56,189,248,0.15); border: 1px solid var(--border-gold); color: #38bdf8;"
+                onclick="openQuickMapModal()">🗺️ Preview Kerala Route on Google Maps</button>
+
+            <div style="display: flex; gap: 10px;">
+                <button class="btn-gold" style="flex: 1;" onclick="dispatchBooking()">Dispatch</button>
+                <button class="btn-gold"
+                    style="flex: 1; background: transparent; color: #fff; border: 1px solid var(--border-gold);"
+                    onclick="closeModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dedicated In-Vehicle Food Ordering Modal -->
+    <div id="foodOrderModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color: var(--gold-primary); font-family: 'Cinzel', serif; margin-bottom: 15px;">Order Food In Vehicle</h2>
+            <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 20px;">Delivered hot & fresh to your passenger seat inside the active cab from restaurants adjacent to your destination.</p>
+
+            <label style="color: var(--gold-light); font-size: 0.85rem; display: block; margin-bottom: 6px;">Select Active Ride</label>
+            <select id="foodRideSelect" class="search-input" style="width: 100%; margin-bottom: 10px;"
+                onchange="onFoodRideSelectionChanged()"></select>
+
+            <div id="foodOrderDestNote"
+                style="font-size: 0.78rem; color: #34d399; background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.25); border-radius: 8px; padding: 7px 10px; margin-bottom: 12px; line-height: 1.4;">
+                📍 <strong>Destination:</strong> <span id="foodOrderDestText">Munnar Tea Hills Station</span><br>
+                🏪 <strong>Adjacent Kitchens:</strong> <span id="foodOrderRestaurantText">Highland Tea Garden Diner (0.3 km)</span>
+            </div>
+
+            <label style="color: var(--gold-light); font-size: 0.85rem; display: block; margin-bottom: 6px;">Available Local Delicacy (Destination Restaurants Only)</label>
+            <select id="foodItemSelect" class="search-input" style="width: 100%; margin-bottom: 15px;">
+                <!-- Dynamically populated based on chosen ride's destination -->
+            </select>
+
+            <label style="color: var(--gold-light); font-size: 0.85rem; display: block; margin-bottom: 6px;">Quantity</label>
+            <input type="number" id="foodQty" class="search-input" value="1" min="1" max="10"
+                style="width: 100%; margin-bottom: 20px;">
+
+            <div style="display: flex; gap: 10px;">
+                <button class="btn-gold" style="flex: 1;" onclick="submitFoodOrder()">Confirm Order</button>
+                <button class="btn-gold"
+                    style="flex: 1; background: transparent; color: #fff; border: 1px solid var(--border-gold);"
+                    onclick="closeFoodModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ride Payment & Checkout Modal -->
+    <div id="paymentModal" class="modal">
+        <div class="modal-content payment-modal-content">
+            <!-- Modal Close Button -->
+            <button class="modal-close-x" onclick="closePaymentModal()">&times;</button>
+
+            <!-- VIEW 1: Payment Checkout Form -->
+            <div id="paymentFormView">
+                <div style="margin-bottom: 20px;">
+                    <h2
+                        style="color: var(--gold-primary); font-family: 'Cinzel', serif; font-size: 1.45rem; margin-bottom: 5px;">
+                        Ride Payment & Settlement</h2>
+                    <p style="color: var(--text-muted); font-size: 0.82rem;">Complete secure payment to confirm your luxury ride reservation.</p>
+                </div>
+
+                <!-- Selected Ride Switcher / Dropdown (shown when opened directly or allowed to change) -->
+                <div id="payRideSelectContainer" style="margin-bottom: 14px;">
+                    <label
+                        style="color: var(--gold-light); font-size: 0.82rem; display: block; margin-bottom: 5px; font-weight: 600;">Selected Ride Reference</label>
+                    <select id="payRideSelect" class="search-input" style="width: 100%;"
+                        onchange="onPaymentRideSelectChange()"></select>
+                </div>
+
+                <!-- Ride Summary Card -->
+                <div class="payment-ride-box">
+                    <div class="pay-row">
+                        <span class="pay-label">Route</span>
+                        <span class="pay-val" id="payRouteDisplay">Kochi ➔ Munnar</span>
+                    </div>
+                    <div class="pay-row">
+                        <span class="pay-label">Vehicle & Driver</span>
+                        <span class="pay-val" id="payDriverDisplay">Luxury Benz • Pranav Mohan</span>
+                    </div>
+                    <div class="pay-row">
+                        <span class="pay-label">Ride Type</span>
+                        <span class="pay-val" id="payTypeDisplay">Local City Travel</span>
+                    </div>
+                    <div class="pay-row"
+                        style="border-top: 1px dashed rgba(212,175,55,0.3); padding-top: 10px; margin-top: 8px;">
+                        <span class="pay-label"
+                            style="font-weight: 700; color: var(--gold-light); font-size: 0.9rem;">Total Fare Amount</span>
+                        <span class="pay-val" id="payFareDisplay"
+                            style="font-size: 1.35rem; font-weight: 700; color: var(--gold-light);">₹0.00</span>
+                    </div>
+                </div>
+
+                <!-- Payment Method Options -->
+                <label
+                    style="color: var(--gold-light); font-size: 0.82rem; display: block; margin-bottom: 8px; font-weight: 600;">Payment Method</label>
+                <div class="payment-modes-grid">
+                    <div class="pay-mode-card active" id="modeCardUPI" onclick="selectPaymentMode('UPI')">
+                        <div class="mode-icon">⚡</div>
+                        <div class="mode-title">UPI / Apps</div>
+                        <div class="mode-sub">GPay, PhonePe, Paytm</div>
+                    </div>
+                    <div class="pay-mode-card" id="modeCardCard" onclick="selectPaymentMode('Card')">
+                        <div class="mode-icon">💳</div>
+                        <div class="mode-title">Debit/Credit</div>
+                        <div class="mode-sub">Visa, Mastercard</div>
+                    </div>
+                    <div class="pay-mode-card" id="modeCardNetBanking" onclick="selectPaymentMode('Net Banking')">
+                        <div class="mode-icon">🏦</div>
+                        <div class="mode-title">Net Banking</div>
+                        <div class="mode-sub">SBI, HDFC, ICICI</div>
+                    </div>
+                    <div class="pay-mode-card" id="modeCardCash" onclick="selectPaymentMode('Cash')">
+                        <div class="mode-icon">💵</div>
+                        <div class="mode-title">Cash</div>
+                        <div class="mode-sub">Pay in Vehicle</div>
+                    </div>
+                </div>
+
+                <!-- Payment Details by Mode -->
+                <div id="upiDetailsView" class="mode-details-box">
+                    <label style="color: var(--text-muted); font-size: 0.8rem; display: block; margin-bottom: 5px;">UPI ID or Virtual Payment Address (VPA)</label>
+                    <input type="text" id="upiIdInput" class="search-input" value="druvidh@okaxis"
+                        placeholder="username@upi / mobile@paytm" style="width: 100%; margin-bottom: 10px;">
+                    <div class="upi-apps-row">
+                        <span class="upi-app-badge active" onclick="setUpiApp('Google Pay')">Google Pay</span>
+                        <span class="upi-app-badge" onclick="setUpiApp('PhonePe')">PhonePe</span>
+                        <span class="upi-app-badge" onclick="setUpiApp('Paytm')">Paytm</span>
+                        <span class="upi-app-badge" onclick="setUpiApp('BHIM UPI')">BHIM</span>
+                    </div>
+                </div>
+
+                <div id="cardDetailsView" class="mode-details-box" style="display: none;">
+                    <label style="color: var(--text-muted); font-size: 0.8rem; display: block; margin-bottom: 5px;">Card Number</label>
+                    <input type="text" id="cardNumberInput" class="search-input" value="4532 •••• •••• 8899"
+                        placeholder="16-digit Card Number" maxlength="19" style="width: 100%; margin-bottom: 10px;">
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" id="cardExpiryInput" class="search-input" value="12/28" placeholder="MM/YY"
+                            style="flex: 1;">
+                        <input type="password" id="cardCvvInput" class="search-input" value="888" placeholder="CVV"
+                            maxlength="4" style="width: 90px;">
+                    </div>
+                </div>
+
+                <div id="netBankingDetailsView" class="mode-details-box" style="display: none;">
+                    <label
+                        style="color: var(--text-muted); font-size: 0.8rem; display: block; margin-bottom: 5px;">Select Kerala & National Banking Gateway</label>
+                    <select id="bankSelect" class="search-input" style="width: 100%;">
+                        <option value="State Bank of India">State Bank of India (SBI)</option>
+                        <option value="HDFC Bank">HDFC Bank</option>
+                        <option value="Federal Bank (Kerala)">Federal Bank (Kerala)</option>
+                        <option value="ICICI Bank">ICICI Bank</option>
+                        <option value="South Indian Bank">South Indian Bank</option>
+                        <option value="Axis Bank">Axis Bank</option>
+                    </select>
+                </div>
+
+                <div id="cashDetailsView" class="mode-details-box" style="display: none;">
+                    <p style="color: var(--gold-light); font-size: 0.85rem; line-height: 1.4; margin: 0;">
+                        💵 Hand over exact cash directly to your verified chauffeur upon arriving at the pickup bay.
+                    </p>
+                </div>
+
+                <!-- Submit / Pay Button -->
+                <div style="display: flex; gap: 10px; margin-top: 22px;">
+                    <button id="btnPayConfirm" class="btn-gold" style="flex: 2; padding: 14px; font-size: 0.95rem;"
+                        onclick="submitPayment()">Pay <span id="btnPayText">₹0.00</span> Now</button>
+                    <button class="btn-gold"
+                        style="flex: 1; background: transparent; color: #fff; border: 1px solid var(--border-gold);"
+                        onclick="closePaymentModal()">Cancel</button>
+                </div>
+            </div>
+
+            <!-- VIEW 2: Payment Successful Screen -->
+            <div id="paymentSuccessView" style="display: none; text-align: center; padding: 10px 5px;">
+                <div class="success-icon-ring">
+                    <span style="font-size: 2.2rem; line-height: 1;">✓</span>
+                </div>
+                <h2
+                    style="color: #2ecc71; font-family: 'Cinzel', serif; font-size: 1.6rem; margin-top: 14px; margin-bottom: 6px;">
+                    Payment Successful!</h2>
+                <p style="color: var(--text-muted); font-size: 0.88rem; margin-bottom: 20px;">Your transaction has been securely settled and verified.</p>
+
+                <!-- Prominent Status Update Banner -->
+                <div class="status-success-banner">
+                    <div
+                        style="font-size: 0.72rem; color: #2ecc71; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700;">
+                        Ride Booking Status</div>
+                    <div style="font-size: 1.15rem; color: #ffffff; font-weight: 700; margin-top: 4px;">Booked & Payment Successful</div>
+                </div>
+
+                <!-- Receipt Details Card -->
+                <div class="receipt-card">
+                    <div class="receipt-row">
+                        <span>Transaction ID</span>
+                        <strong id="successTxnId"
+                            style="color: var(--gold-light); font-family: monospace; font-size: 0.95rem; letter-spacing: 1px;">PAY01</strong>
+                    </div>
+                    <div class="receipt-row">
+                        <span>Ride Code</span>
+                        <strong id="successRideCode" style="color: var(--gold-light);">RD01</strong>
+                    </div>
+                    <div class="receipt-row">
+                        <span>Amount Paid</span>
+                        <strong id="successAmount" style="color: #2ecc71; font-size: 1.15rem;">₹0.00</strong>
+                    </div>
+                    <div class="receipt-row">
+                        <span>Payment Mode</span>
+                        <strong id="successMode">UPI</strong>
+                    </div>
+                    <div class="receipt-row">
+                        <span>Transaction Time</span>
+                        <strong id="successTime" style="font-size: 0.85rem; color: var(--text-muted);">Just now</strong>
+                    </div>
+                </div>
+
+                <button class="btn-gold" style="width: 100%; margin-top: 22px; padding: 14px; font-size: 0.95rem;"
+                    onclick="closePaymentSuccessModal()">Done & View Dashboard</button>
+            </div>
+
+            <!-- VIEW 3: Existing Payment Receipt Screen -->
+            <div id="paymentReceiptView" style="display: none; text-align: center; padding: 10px 5px;">
+                <div style="font-size: 2.4rem; margin-bottom: 6px;">💳</div>
+                <h2
+                    style="color: var(--gold-primary); font-family: 'Cinzel', serif; font-size: 1.45rem; margin-bottom: 6px;">
+                    Payment Receipt</h2>
+                <p style="color: var(--text-muted); font-size: 0.82rem; margin-bottom: 18px;">Official Electronic Transaction Record</p>
+
+                <div class="status-success-banner" style="background: rgba(46, 204, 113, 0.12);">
+                    <div
+                        style="font-size: 0.72rem; color: #2ecc71; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700;">
+                        Status</div>
+                    <div style="font-size: 1.1rem; color: #ffffff; font-weight: 700; margin-top: 4px;">Booked & Payment Successful</div>
+                </div>
+
+                <div class="receipt-card">
+                    <div class="receipt-row">
+                        <span>Payment ID</span>
+                        <strong id="viewTxnId"
+                            style="color: var(--gold-light); font-family: monospace; font-size: 0.95rem;">PAY01</strong>
+                    </div>
+                    <div class="receipt-row">
+                        <span>Ride Reference</span>
+                        <strong id="viewRideCode" style="color: var(--gold-light);">RD01</strong>
+                    </div>
+                    <div class="receipt-row">
+                        <span>Passenger</span>
+                        <strong id="viewUserName">Druvidh K P</strong>
+                    </div>
+                    <div class="receipt-row">
+                        <span>Route</span>
+                        <strong id="viewRoute" style="font-size: 0.82rem;">Kochi ➔ Munnar</strong>
+                    </div>
+                    <div class="receipt-row">
+                        <span>Chauffeur & Fleet</span>
+                        <strong id="viewChauffeur">Benz • Pranav Mohan</strong>
+                    </div>
+                    <div class="receipt-row">
+                        <span>Amount Paid</span>
+                        <strong id="viewAmount" style="color: #2ecc71; font-size: 1.15rem;">₹0.00</strong>
+                    </div>
+                    <div class="receipt-row">
+                        <span>Payment Mode</span>
+                        <strong id="viewMode">UPI</strong>
+                    </div>
+                    <div class="receipt-row">
+                        <span>Settled On</span>
+                        <strong id="viewTime" style="font-size: 0.85rem; color: var(--text-muted);">Timestamp</strong>
+                    </div>
+                </div>
+
+                <button class="btn-gold" style="width: 100%; margin-top: 20px; padding: 13px;"
+                    onclick="closePaymentModal()">Close Receipt</button>
+                <button type="button" class="btn-gold"
+                    style="width: 100%; margin-top: 10px; background: rgba(231,76,60,0.15); border: 1px solid rgba(231,76,60,0.4); color: #f87171;"
+                    onclick="cancelRideFromReceipt()">🚫 Cancel Ride & Request Refund</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ride Cancellation & Payment Refund Modal -->
+    <div id="refundModal" class="modal">
+        <div class="modal-content payment-modal-content"
+            style="max-width: 480px; text-align: center; padding: 30px 24px;">
+            <!-- Modal Close Button -->
+            <button class="modal-close-x" onclick="closeRefundModal()">&times;</button>
+
+            <!-- Animated Refund Icon Ring -->
+            <div class="refund-icon-ring">
+                <span style="font-size: 2.2rem; line-height: 1;">💸</span>
+            </div>
+
+            <!-- Top Pill Badge -->
+            <div class="refund-badge-pill">
+                <span>🔄 100% CANCELLATION REFUND PROCESSED</span>
+            </div>
+
+            <h2
+                style="color: #10b981; font-family: 'Cinzel', serif; font-size: 1.55rem; margin-top: 8px; margin-bottom: 6px;">
+                Payment Refunded Successfully!</h2>
+            <p id="refundSubtitleText"
+                style="color: var(--text-muted); font-size: 0.84rem; margin-bottom: 18px; line-height: 1.45;">
+                Your ride reservation has been cancelled and the full fare has been credited back to your original payment method.
+            </p>
+
+            <!-- Refund Highlight Banner -->
+            <div class="refund-amount-banner">
+                <div
+                    style="font-size: 0.72rem; color: #10b981; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700;">
+                    Refund Credited to Account</div>
+                <div id="refundAmountDisplay"
+                    style="font-size: 2rem; color: #ffffff; font-weight: 800; font-family: 'JetBrains Mono', monospace; margin: 4px 0;">
+                    ₹0.00</div>
+                <div id="refundModeDisplay" style="font-size: 0.76rem; color: #6ee7b7; font-weight: 600;">Refunded to UPI / Original Payment Method</div>
+            </div>
+
+            <!-- Electronic Settlement Record Card -->
+            <div class="receipt-card" style="margin-bottom: 22px;">
+                <div class="receipt-row">
+                    <span>Refund Reference ID</span>
+                    <strong id="refundTxnId"
+                        style="color: var(--primary-light); font-family: monospace; font-size: 0.92rem; letter-spacing: 0.5px;">REF-RD01-8821</strong>
+                </div>
+                <div class="receipt-row">
+                    <span>Cancelled Ride Code</span>
+                    <strong id="refundRideCode" style="color: #fff;">RD01</strong>
+                </div>
+                <div class="receipt-row">
+                    <span>Route Cancelled</span>
+                    <strong id="refundRoute" style="font-size: 0.82rem; color: #e2e8f0;">Kochi Marine Drive ➔ Munnar</strong>
+                </div>
+                <div class="receipt-row">
+                    <span>Refund Settlement Status</span>
+                    <strong
+                        style="color: #10b981; display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem;">
+                        <span
+                            style="display:inline-block; width:7px; height:7px; border-radius:50%; background:#10b981; box-shadow:0 0 8px #10b981;"></span>
+                        Completed & Credited
+                    </strong>
+                </div>
+                <div class="receipt-row">
+                    <span>Settled On</span>
+                    <strong id="refundTimestamp" style="font-size: 0.82rem; color: var(--text-muted);">Just now</strong>
+                </div>
+            </div>
+
+            <!-- Close / Acknowledge Action Button -->
+            <div style="display: flex; gap: 10px;">
+                <button class="btn-gold" style="flex: 1; padding: 13px; font-size: 0.92rem;"
+                    onclick="closeRefundModal()">✓ Acknowledged & Back to Rides</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Google Maps API Key Configuration Modal -->
+    <div id="apiKeyModal" class="modal">
+        <div class="modal-content" style="max-width: 530px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 1.8rem;">🗺️</span>
+                    <div>
+                        <h2
+                            style="color: var(--gold-primary); font-family: 'Cinzel', serif; font-size: 1.35rem; margin: 0;">
+                            Google Maps Platform</h2>
+                        <p style="color: var(--text-muted); font-size: 0.78rem; margin: 2px 0 0 0;">API Key Configuration & Telemetry Engine</p>
+                    </div>
+                </div>
+                <button class="modal-close-x" onclick="closeApiKeyModal()">&times;</button>
+            </div>
+
+            <!-- API Key Status Pill -->
+            <div id="apiKeyStatusBanner" class="api-key-status-banner">
+                <span class="status-indicator-dot" id="modalStatusDot"></span>
+                <span id="apiKeyStatusText">Checking Google Maps API Key...</span>
+            </div>
+
+            <div class="form-group" style="margin-top: 16px;">
+                <label for="googleApiKeyInput"
+                    style="display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; color: var(--gold-light); margin-bottom: 6px; font-weight: 600;">
+                    <span>Google Maps JavaScript API Key</span>
+                    <button type="button" class="btn-text-toggle" onclick="toggleApiKeyVisibility()"
+                        style="background: none; border: none; color: #38bdf8; cursor: pointer; font-size: 0.76rem; font-weight: 600;">👁️ Show / Hide</button>
+                </label>
+                <div style="position: relative;">
+                    <input type="password" id="googleApiKeyInput" class="search-input"
+                        style="width: 100%; font-family: 'JetBrains Mono', monospace; font-size: 0.86rem; letter-spacing: 0.5px; padding: 10px 12px;"
+                        placeholder="AIzaSy..." autocomplete="off">
+                </div>
+                <p style="font-size: 0.73rem; color: var(--text-muted); margin-top: 7px; line-height: 1.45;">
+                    Enter your key with <strong>Maps JavaScript API</strong> enabled from your <a
+                        href="https://console.cloud.google.com/google/maps-apis/overview" target="_blank"
+                        rel="noopener noreferrer" style="color: #38bdf8; text-decoration: underline;">Google Cloud Console</a>.
+                </p>
+            </div>
+
+            <div class="api-features-card">
+                <div style="font-size: 0.8rem; font-weight: 700; color: #fff; margin-bottom: 8px;">✨ Features Powered by Google Maps API:</div>
+                <div
+                    style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.76rem; color: var(--text-muted);">
+                    <div>🚦 Real-Time Live Traffic</div>
+                    <div>🛰️ Ultra-Res Satellite & Hybrid</div>
+                    <div>📍 16 Kerala Hub Markers</div>
+                    <div>🎯 Live Chauffeur Telemetry</div>
+                    <div>🛣️ Accurate Geodesic Routes</div>
+                    <div>🌙 Custom Cyber Lumina Dark Style</div>
+                </div>
+            </div>
+
+            <div id="apiKeyModalFeedback"
+                style="display: none; padding: 9px 12px; border-radius: 8px; font-size: 0.78rem; margin-bottom: 14px;">
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-top: 16px;">
+                <button class="btn-gold" style="flex: 2; padding: 12px;" onclick="saveApiKeyFromModal()">
+                    💾 Save & Activate Map
+                </button>
+                <button class="btn-gold"
+                    style="flex: 1; background: transparent; color: #f43f5e; border: 1px solid rgba(244,63,94,0.4);"
+                    onclick="removeApiKey()">
+                    🗑️ Remove
+                </button>
+                <button class="btn-gold"
+                    style="flex: 1; background: transparent; color: #fff; border: 1px solid var(--border-gold);"
+                    onclick="closeApiKeyModal()">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Provision / Add New User Modal (Admin Only) -->
+    <div id="newUserModal" class="modal">
+        <div class="modal-content" style="max-width: 480px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                <div>
+                    <h2
+                        style="color: var(--gold-primary); font-family: 'Cinzel', serif; font-size: 1.35rem; margin: 0;">
+                        Add New System User</h2>
+                    <p style="color: var(--text-muted); font-size: 0.8rem; margin: 2px 0 0 0;">Provision administrator or commuter accounts.</p>
+                </div>
+                <button class="modal-close-x" onclick="closeNewUserModal()">&times;</button>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label style="color: var(--gold-light); font-size: 0.82rem; display: block; margin-bottom: 5px;">User Identifier (Unique ID)</label>
+                <input type="text" id="newUserId" class="search-input" style="width: 100%;" placeholder="e.g. USR05">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label style="color: var(--gold-light); font-size: 0.82rem; display: block; margin-bottom: 5px;">Full Legal Name</label>
+                <input type="text" id="newUserName" class="search-input" style="width: 100%;"
+                    placeholder="e.g. Meera Krishnan">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label style="color: var(--gold-light); font-size: 0.82rem; display: block; margin-bottom: 5px;">System Role</label>
+                <select id="newUserRole" class="search-input" style="width: 100%;">
+                    <option value="Customer">Customer / Passenger Commuter</option>
+                    <option value="Admin">Administrator (Master System Rights)</option>
+                </select>
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+                <div style="flex: 1;">
+                    <label
+                        style="color: var(--gold-light); font-size: 0.82rem; display: block; margin-bottom: 5px;">Contact Phone</label>
+                    <input type="text" id="newUserPhone" class="search-input" style="width: 100%;"
+                        placeholder="98470xxxxx">
+                </div>
+                <div style="flex: 1;">
+                    <label
+                        style="color: var(--gold-light); font-size: 0.82rem; display: block; margin-bottom: 5px;">Gender</label>
+                    <select id="newUserGender" class="search-input" style="width: 100%;">
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label style="color: var(--gold-light); font-size: 0.82rem; display: block; margin-bottom: 5px;">Access Password</label>
+                <input type="password" id="newUserPassword" class="search-input" style="width: 100%;"
+                    placeholder="Enter password" value="">
+            </div>
+
+            <div style="display: flex; gap: 10px;">
+                <button class="btn-gold" style="flex: 1;" onclick="submitNewUser()">Create Account</button>
+                <button class="btn-gold"
+                    style="flex: 1; background: transparent; color: #fff; border: 1px solid var(--border-gold);"
+                    onclick="closeNewUserModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================================================================= -->
+    <!-- ADMINISTRATOR EXCLUSIVE EDIT MODALS -->
+    <!-- ================================================================= -->
+
+    <!-- Administrator: Edit Ride Reservation Modal -->
+    <div id="editRideModal" class="modal">
+        <div class="modal-content" style="max-width: 540px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <div>
+                    <span class="pnl-section-badge" style="font-size: 0.7rem; margin-bottom: 4px;">👑 ADMINISTRATOR OVERRIDE</span>
+                    <h2 style="color: var(--gold-primary); font-family: 'Cinzel', serif; font-size: 1.35rem; margin: 0;">Edit Ride Reservation</h2>
+                </div>
+                <button class="modal-close-x" onclick="closeEditRideModal()">&times;</button>
+            </div>
+            
+            <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+                <div style="flex: 1;">
+                    <label style="color: var(--gold-light); font-size: 0.8rem; display: block; margin-bottom: 4px;">Ride Reference Code</label>
+                    <input type="text" id="editRideCode" class="search-input" style="width: 100%; font-family: monospace; font-weight: 700;" readonly>
+                </div>
+                <div style="flex: 1;">
+                    <label style="color: var(--gold-light); font-size: 0.8rem; display: block; margin-bottom: 4px;">Passenger Name</label>
+                    <input type="text" id="editRidePassenger" class="search-input" style="width: 100%;">
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+                <div style="flex: 1;">
+                    <label style="color: var(--gold-light); font-size: 0.8rem; display: block; margin-bottom: 4px;">Pickup Station Hub</label>
+                    <select id="editRidePickup" class="search-input" style="width: 100%;">
+                        <option value="ST01">ST01 - Kochi Marine Drive Hub (Ernakulam)</option>
+                        <option value="ST02">ST02 - Thiruvananthapuram Central (Trivandrum)</option>
+                        <option value="ST03">ST03 - Kozhikode Beach Square (Calicut)</option>
+                        <option value="ST04">ST04 - Munnar Tea Hills Station (Idukki)</option>
+                        <option value="ST05">ST05 - Alappuzha Backwater Jetty (Alleppey)</option>
+                        <option value="ST06">ST06 - Thrissur Swaraj Round (Cultural Capital)</option>
+                        <option value="ST07">ST07 - Cochin International Airport (CIAL)</option>
+                        <option value="ST08">ST08 - Kovalam Beach Promenade (Trivandrum)</option>
+                        <option value="ST09">ST09 - Wayanad Vythiri Hill Pass (Wayanad)</option>
+                        <option value="ST10">ST10 - Kannur Payyambalam Coast (Kannur)</option>
+                        <option value="ST11">ST11 - Kollam Ashtamudi Lake Hub (Kollam)</option>
+                        <option value="ST12">ST12 - Kottayam Kumarakom Gateway (Kottayam)</option>
+                        <option value="ST13">ST13 - Palakkad Fort Junction (Palakkad)</option>
+                        <option value="ST14">ST14 - Malappuram Kottakkal Gateway (Malappuram)</option>
+                        <option value="ST15">ST15 - Pathanamthitta Sabarimala Junction</option>
+                        <option value="ST16">ST16 - Kasaragod Bekal Fort Station (Kasaragod)</option>
+                    </select>
+                </div>
+                <div style="flex: 1;">
+                    <label style="color: var(--gold-light); font-size: 0.8rem; display: block; margin-bottom: 4px;">Destination Hub / Drop-off</label>
+                    <input type="text" id="editRideDestination" class="search-input" style="width: 100%;">
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+                <div style="flex: 1;">
+                    <label style="color: var(--gold-light); font-size: 0.8rem; display: block; margin-bottom: 4px;">📅 Scheduled Date</label>
+                    <input type="date" id="editRideDate" class="search-input" style="width: 100%;">
+                </div>
+                <div style="flex: 1;">
+                    <label style="color: var(--gold-light); font-size: 0.8rem; display: block; margin-bottom: 4px;">Travel Type</label>
+                    <select id="editRideType" class="search-input" style="width: 100%;">
+                        <option value="Local">Local City Travel</option>
+                        <option value="Long-Distance">Long-Distance Express</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+                <div style="flex: 1;">
+                    <label style="color: var(--gold-light); font-size: 0.8rem; display: block; margin-bottom: 4px;">Vehicle Model</label>
+                    <select id="editRideVehicle" class="search-input" style="width: 100%;">
+                        <option value="Tesla">Tesla Model S Plaid (EV Hyper-Tech)</option>
+                        <option value="Rolls-Royce">Rolls-Royce Ghost (Royal Crown)</option>
+                        <option value="Benz">Mercedes-Benz S-Class (VIP Luxury)</option>
+                        <option value="BMW">BMW 7-Series (Executive Prestige)</option>
+                        <option value="Porsche">Porsche Taycan EV (Sports)</option>
+                        <option value="Audi">Audi e-tron GT (Quattro)</option>
+                        <option value="Range Rover">Range Rover Autobiography (4x4)</option>
+                        <option value="Innova">Toyota Innova Crysta (Touring)</option>
+                        <option value="Volvo">Volvo 9600 Luxury Coach</option>
+                        <option value="Alto">Maruti Suzuki Alto</option>
+                        <option value="Autorickshaw">Kerala Autorickshaw</option>
+                        <option value="Harley">Harley-Davidson Fat Boy</option>
+                        <option value="Ather">Ather 450X Smart EV</option>
+                        <option value="Bike">Royal Enfield Bullet 350</option>
+                    </select>
+                </div>
+                <div style="flex: 1;">
+                    <label style="color: var(--gold-light); font-size: 0.8rem; display: block; margin-bottom: 4px;">Assigned Chauffeur</label>
+                    <input type="text" id="editRideDriver" class="search-input" style="width: 100%;">
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-bottom: 18px;">
+                <div style="flex: 1;">
+                    <label style="color: var(--gold-light); font-size: 0.8rem; display: block; margin-bottom: 4px;">Fare Amount (₹)</label>
+                    <input type="number" step="0.01" id="editRideFare" class="search-input" style="width: 100%; font-family: monospace; font-weight: 700;">
+                </div>
+                <div style="flex: 1;">
+                    <label style="color: var(--gold-light); font-size: 0.8rem; display: block; margin-bottom: 4px;">Reservation Status</label>
+                    <select id="editRideStatus" class="search-input" style="width: 100%;">
+                        <option value="Booked">Booked (Pending Payment)</option>
+                        <option value="Booked & Payment Successful">Booked & Payment Successful</option>
+                        <option value="In Transit">In Transit</option>
+                        <option value="Completed">Completed</option>
+                        <option value="Cancelled">Cancelled & Refunded</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 10px;">
+                <button class="btn-gold" style="flex: 2; padding: 12px;" onclick="submitEditRide()">💾 Save Changes</button>
+                <button class="btn-gold" style="flex: 1; background: transparent; color: #fff; border: 1px solid var(--border-gold);" onclick="closeEditRideModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Administrator: Edit Driver & Fleet Modal -->
+    <div id="editDriverModal" class="modal">
+        <div class="modal-content" style="max-width: 480px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <div>
+                    <span class="pnl-section-badge" style="font-size: 0.7rem; margin-bottom: 4px;">👑 FLEET OVERRIDE</span>
+                    <h2 style="color: var(--gold-primary); font-family: 'Cinzel', serif; font-size: 1.35rem; margin: 0;">Edit Driver & Vehicle</h2>
+                </div>
+                <button class="modal-close-x" onclick="closeEditDriverModal()">&times;</button>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label style="color: var(--gold-light); font-size: 0.82rem; display: block; margin-bottom: 4px;">Driver ID</label>
+                <input type="text" id="editDriverId" class="search-input" style="width: 100%; font-family: monospace;" readonly>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label style="color: var(--gold-light); font-size: 0.82rem; display: block; margin-bottom: 4px;">Chauffeur Full Name</label>
+                <input type="text" id="editDriverName" class="search-input" style="width: 100%;">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label style="color: var(--gold-light); font-size: 0.82rem; display: block; margin-bottom: 4px;">Assigned Vehicle Model</label>
+                <select id="editDriverVehicleType" class="search-input" style="width: 100%;">
+                    <option value="Tesla">Tesla Model S Plaid (EV Hyper-Tech)</option>
+                    <option value="Rolls-Royce">Rolls-Royce Ghost (Royal Crown Limousine)</option>
+                    <option value="Benz">Mercedes-Benz S-Class (VIP Luxury)</option>
+                    <option value="BMW">BMW 7-Series (Executive Prestige)</option>
+                    <option value="Porsche">Porsche Taycan EV (Grand Touring Sports)</option>
+                    <option value="Audi">Audi e-tron GT (Quattro Prestige EV)</option>
+                    <option value="Range Rover">Range Rover Autobiography (4x4 Hill Explorer)</option>
+                    <option value="Innova">Toyota Innova Crysta (Touring & Family)</option>
+                    <option value="Volvo">Volvo 9600 Luxury Coach (Royal Group Lounge)</option>
+                    <option value="Alto">Maruti Suzuki Alto (Smart Hatchback)</option>
+                    <option value="Autorickshaw">Kerala Autorickshaw (Fast Tuk-Tuk Auto)</option>
+                    <option value="Harley">Harley-Davidson Fat Boy (Coastal Cruiser)</option>
+                    <option value="Ather">Ather 450X Smart EV (Eco Swift City Solo)</option>
+                    <option value="Bike">Royal Enfield Bullet 350 (Solo Cruiser)</option>
+                </select>
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-bottom: 18px;">
+                <div style="flex: 1;">
+                    <label style="color: var(--gold-light); font-size: 0.82rem; display: block; margin-bottom: 4px;">License Plate Number</label>
+                    <input type="text" id="editDriverNumber" class="search-input" style="width: 100%; font-family: monospace;">
+                </div>
+                <div style="flex: 1;">
+                    <label style="color: var(--gold-light); font-size: 0.82rem; display: block; margin-bottom: 4px;">Rating (1.0 - 5.0)</label>
+                    <input type="number" step="0.1" min="1.0" max="5.0" id="editDriverRating" class="search-input" style="width: 100%;">
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 10px;">
+                <button class="btn-gold" style="flex: 2; padding: 12px;" onclick="submitEditDriver()">💾 Save Driver</button>
+                <button class="btn-gold" style="flex: 1; background: transparent; color: #fff; border: 1px solid var(--border-gold);" onclick="closeEditDriverModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Administrator: Edit User Modal -->
+    <div id="editUserModal" class="modal">
+        <div class="modal-content" style="max-width: 480px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <div>
+                    <span class="pnl-section-badge" style="font-size: 0.7rem; margin-bottom: 4px;">👑 IDENTITY OVERRIDE</span>
+                    <h2 style="color: var(--gold-primary); font-family: 'Cinzel', serif; font-size: 1.35rem; margin: 0;">Edit User Account</h2>
+                </div>
+                <button class="modal-close-x" onclick="closeEditUserModal()">&times;</button>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label style="color: var(--gold-light); font-size: 0.82rem; display: block; margin-bottom: 4px;">User Identifier (Unique ID)</label>
+                <input type="text" id="editUserId" class="search-input" style="width: 100%; font-family: monospace;" readonly>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label style="color: var(--gold-light); font-size: 0.82rem; display: block; margin-bottom: 4px;">Full Legal Name</label>
+                <input type="text" id="editUserName" class="search-input" style="width: 100%;">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label style="color: var(--gold-light); font-size: 0.82rem; display: block; margin-bottom: 4px;">System Role</label>
+                <select id="editUserRole" class="search-input" style="width: 100%;">
+                    <option value="Customer">Customer / Passenger Commuter</option>
+                    <option value="Admin">Administrator (Master System Rights)</option>
+                </select>
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+                <div style="flex: 1;">
+                    <label style="color: var(--gold-light); font-size: 0.82rem; display: block; margin-bottom: 4px;">Contact Phone</label>
+                    <input type="text" id="editUserPhone" class="search-input" style="width: 100%;">
+                </div>
+                <div style="flex: 1;">
+                    <label style="color: var(--gold-light); font-size: 0.82rem; display: block; margin-bottom: 4px;">Gender</label>
+                    <select id="editUserGender" class="search-input" style="width: 100%;">
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 18px;">
+                <label style="color: var(--gold-light); font-size: 0.82rem; display: block; margin-bottom: 4px;">Access Password (Leave blank to keep existing)</label>
+                <input type="password" id="editUserPassword" class="search-input" style="width: 100%;" placeholder="Enter new password to update">
+            </div>
+
+            <div style="display: flex; gap: 10px;">
+                <button class="btn-gold" style="flex: 2; padding: 12px;" onclick="submitEditUser()">💾 Save Account</button>
+                <button class="btn-gold" style="flex: 1; background: transparent; color: #fff; border: 1px solid var(--border-gold);" onclick="closeEditUserModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Interactive Route Preview & Location Map Modal -->
+    <div id="quickMapModal" class="modal">
+        <div class="modal-content"
+            style="max-width: 920px; width: 95%; max-height: 92vh; display: flex; flex-direction: column;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 1.5rem;">🗺️</span>
+                    <div>
+                        <h3
+                            style="color: var(--primary-light); margin: 0; font-size: 1.15rem; font-family: 'Cinzel', serif;">
+                            Kerala Transit & Interactive Route Map</h3>
+                        <p style="color: var(--text-muted); font-size: 0.76rem; margin: 0;">Interactive route preview, live station pins & turn-by-turn navigation</p>
+                    </div>
+                </div>
+                <button type="button" onclick="closeQuickMapModal()"
+                    style="background: none; border: none; color: #fff; font-size: 1.6rem; cursor: pointer; line-height: 1;">✕</button>
+            </div>
+
+            <!-- Route Metrics Bar -->
+            <div id="quickRouteInfoBanner"
+                style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; background: rgba(56, 189, 248, 0.08); border: 1px solid var(--border-gold); border-radius: 12px; padding: 10px 14px; margin-bottom: 12px;">
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <span style="font-size: 0.85rem; font-weight: 700; color: #fff;">📍 Origin: <strong
+                            id="quickRouteOriginText" style="color: #38bdf8;">ST01 Kochi Marine Drive</strong></span>
+                    <span style="color: var(--gold-primary);">➔</span>
+                    <span style="font-size: 0.85rem; font-weight: 700; color: #fff;">🏁 Destination: <strong
+                            id="quickRouteDestText" style="color: #ffd700;">Munnar Tea Hills</strong></span>
+                </div>
+                <div style="display: flex; gap: 14px; font-size: 0.82rem;">
+                    <span>📏 Distance: <strong id="quickRouteDistText" style="color: #38bdf8;">128 km</strong></span>
+                    <span>⏱️ Travel Time: <strong id="quickRouteTimeText" style="color: #ffd700;">2h 35m</strong></span>
+                </div>
+            </div>
+
+            <!-- Interactive Leaflet Route Preview Map -->
+            <div
+                style="flex: 1; min-height: 440px; border-radius: 14px; overflow: hidden; border: 1px solid var(--border-glass); position: relative; background: #080d1a;">
+                <div id="quickRouteMap" style="width: 100%; height: 100%; min-height: 440px;"></div>
+            </div>
+
+            <div
+                style="display: flex; justify-content: space-between; align-items: center; margin-top: 14px; flex-wrap: wrap; gap: 10px;">
+                <span style="font-size: 0.78rem; color: var(--text-muted);">💡 Click any station on the map to set it as Pickup or Destination</span>
+                <div style="display: flex; gap: 10px;">
+                    <a id="btnExternalGoogleMapsNav"
+                        href="https://www.google.com/maps/dir/?api=1&origin=Kochi&destination=Munnar" target="_blank"
+                        rel="noopener noreferrer" class="btn-gold"
+                        style="padding: 8px 16px; font-size: 0.8rem; background: rgba(56, 189, 248, 0.2); border: 1px solid #38bdf8; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+                        ↗ Open in Google Maps
+                    </a>
+                    <button type="button" class="btn-gold" onclick="closeQuickMapModal()"
+                        style="padding: 8px 20px;">Done / Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Linked External JavaScript -->
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+
+</html>

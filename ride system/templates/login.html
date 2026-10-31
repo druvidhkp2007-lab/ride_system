@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Ride Sharing | Secure Sign In & Admin Gateway</title>
+    <link id="themeStylesheet" rel="stylesheet" href="{{ url_for('static', filename='style-modern.css') }}">
+</head>
+<body>
+    <!-- Ambient Floating Particles Canvas -->
+    <canvas id="particles-canvas"></canvas>
+
+    <!-- Floating Theme Switcher at Top Right -->
+    <div style="position: fixed; top: 20px; right: 24px; z-index: 100;">
+        <div class="theme-switcher-wrapper">
+            <span>🎨 Theme</span>
+            <select id="themeSelector" class="theme-select" onchange="switchTheme(this.value)">
+                <option value="cyber-lumina">⚡ Cyber Lumina (Ultra Modern)</option>
+                <option value="emerald-matrix">🌿 Emerald Matrix (Tech Jade)</option>
+                <option value="amethyst-nebula">🔮 Amethyst Nebula (Cosmic Violet)</option>
+                <option value="royal-concierge">👑 Royal Concierge (Classic Gold)</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="auth-container auth-container-enhanced">
+        <div class="auth-brand-badge">
+            <span class="auth-badge-dot"></span>
+            <span>KERALA ROYAL TRANSIT & MOBILITY</span>
+        </div>
+        <h1 class="brand-title">RIDE SHARING</h1>
+        <p class="sub-title">Next-Gen Real-Time Transit, Telemetry & Financial Fleet Network</p>
+
+        <!-- Role Switcher Tabs: Admin Portal vs Passenger Portal -->
+        <div class="auth-role-tabs">
+            <button type="button" class="auth-role-tab active" id="tabAdmin" onclick="switchLoginRole('admin')">
+                <span class="tab-icon">👑</span>
+                <span class="tab-label">Administrator Portal</span>
+                <span class="tab-pill">Admin Only</span>
+            </button>
+            <button type="button" class="auth-role-tab" id="tabCustomer" onclick="switchLoginRole('customer')">
+                <span class="tab-icon">🚘</span>
+                <span class="tab-label">Passenger Access</span>
+                <span class="tab-pill tab-pill-green">Commuter</span>
+            </button>
+        </div>
+
+        <!-- Role Context Banner -->
+        <div id="roleContextBanner" class="role-context-banner role-admin">
+            <div class="role-banner-icon" id="roleBannerIcon">👑</div>
+            <div>
+                <div class="role-banner-title" id="roleBannerTitle">Executive Administrator Gateway</div>
+                <div class="role-banner-desc" id="roleBannerDesc">Access Master System Telemetry, All Platform Data, and Real-Time Profit & Loss Analytics.</div>
+            </div>
+        </div>
+
+        <form id="loginForm">
+            <input type="hidden" id="loginRole" value="admin">
+
+            <div class="form-group">
+                <label for="userId" id="userIdLabel" style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>Admin Identifier</span>
+                    <span class="field-hint" id="userIdHint">e.g. admin or USR01</span>
+                </label>
+                <div class="input-with-icon">
+                    <span class="input-prefix-icon" id="userIconPrefix">👑</span>
+                    <input type="text" id="userId" class="form-control" value="admin" placeholder="e.g. admin or USR01" required autocomplete="username">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="password" style="display: flex; justify-content: space-between; align-items: center;">
+                    <span id="passwordLabel">Admin Password</span>
+                    <button type="button" class="btn-toggle-pwd" onclick="togglePasswordVisibility()" title="Show/Hide Password">👁️ Show</button>
+                </label>
+                <div class="input-with-icon">
+                    <span class="input-prefix-icon">🔒</span>
+                    <input type="password" id="password" class="form-control" value="" placeholder="Enter your password" required autocomplete="current-password">
+                </div>
+            </div>
+
+            <button type="submit" class="btn-gold" id="btnSubmitAuth" style="margin-top: 14px; width: 100%;">
+                <span id="btnSubmitIcon">👑</span> <span id="btnSubmitText">AUTHENTICATE AS ADMINISTRATOR</span>
+            </button>
+            <p id="errorMsg" class="auth-error-banner" style="display: none;"></p>
+        </form>
+
+        <div class="auth-footer-security">
+            <span>🔒 256-Bit Secure Telemetry Lock</span>
+            <span>•</span>
+            <span>Satellite Radar Lock 99.8%</span>
+            <span>•</span>
+            <span>Kerala Royal Transit</span>
+        </div>
+    </div>
+
+    <!-- Linked External JavaScript -->
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
